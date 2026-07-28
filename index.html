@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<title>Return-to-Run</title>
+<style>
+  :root{
+    --bg:#0f1115;
+    --ink:#f5f7fa;
+    --muted:#8a94a6;
+    --line:#242a34;
+    --card:#171b22;
+    --warmup:#e8973a;   /* amber */
+    --run:#28b463;      /* green */
+    --walk:#3d8bff;     /* blue */
+    --done:#6b7280;     /* neutral */
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-variant-numeric:tabular-nums;
+    display:flex;
+    flex-direction:column;
+    min-height:100dvh;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    transition:background-color .4s ease;
+  }
+  .wrap{
+    flex:1;
+    width:100%;
+    max-width:460px;
+    margin:0 auto;
+    padding:22px 20px 28px;
+    display:flex;
+    flex-direction:column;
+  }
+  .eyebrow{
+    font-size:12px;letter-spacing:.22em;text-transform:uppercase;
+    color:var(--muted);font-weight:700;
+  }
+  h1{
+    font-size:26px;font-weight:800;letter-spacing:-.01em;margin:2px 0 20px;
+  }
+
+  /* ---------- SETUP ---------- */
+  .stepper{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:14px 16px;
+    margin-bottom:12px;
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+  }
+  .stepper .label{display:flex;flex-direction:column;gap:2px}
+  .stepper .label b{font-size:16px;font-weight:700}
+  .stepper .label span{font-size:12px;color:var(--muted)}
+  .ctrls{display:flex;align-items:center;gap:10px}
+  .val{min-width:74px;text-align:center;font-size:22px;font-weight:800}
+  .rnd{
+    width:46px;height:46px;border-radius:50%;
+    border:1px solid var(--line);background:#0e1218;color:var(--ink);
+    font-size:26px;font-weight:600;line-height:1;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    touch-action:manipulation;
+  }
+  .rnd:active{background:#1d2530}
+  .summary{
+    margin-top:6px;color:var(--muted);font-size:13px;line-height:1.5;
+    border-top:1px solid var(--line);padding-top:14px;
+  }
+  .summary b{color:var(--ink)}
+
+  .cta{
+    margin-top:auto;
+    width:100%;border:none;border-radius:16px;
+    padding:20px;font-size:19px;font-weight:800;letter-spacing:.01em;
+    background:var(--run);color:#04180d;cursor:pointer;touch-action:manipulation;
+  }
+  .cta:active{filter:brightness(.94)}
+  .cta.stop{background:#e5484d;color:#fff}
+  .cta.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);margin-top:12px}
+
+  /* ---------- ACTIVE ---------- */
+  #active{display:none;flex:1;flex-direction:column;text-align:center}
+  .phase{
+    font-size:15px;letter-spacing:.28em;text-transform:uppercase;font-weight:800;
+    margin-top:8px;color:rgba(255,255,255,.85);
+  }
+  .clock{
+    font-size:clamp(84px,30vw,150px);font-weight:800;line-height:.95;
+    margin:auto 0;letter-spacing:-.03em;
+  }
+  .meta{
+    display:flex;justify-content:space-around;gap:8px;
+    margin-bottom:18px;
+  }
+  .meta div{display:flex;flex-direction:column;gap:3px}
+  .meta .k{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.7)}
+  .meta .v{font-size:22px;font-weight:800}
+  .bar{height:6px;border-radius:6px;background:rgba(255,255,255,.22);overflow:hidden;margin-bottom:20px}
+  .bar>i{display:block;height:100%;width:0;background:#fff;transition:width .25s linear}
+  .row{display:flex;gap:12px}
+  .row .cta{margin-top:0}
+  body.phase-warmup{background:var(--warmup)}
+  body.phase-run{background:var(--run)}
+  body.phase-walk{background:var(--walk)}
+  body.phase-done{background:var(--done)}
+  body.running .clock,body.running .phase,body.running .meta,body.running .bar{color:#fff}
+  .hint{font-size:12px;color:var(--muted);text-align:center;margin-top:14px;line-height:1.5}
+  body.running .hint{color:rgba(255,255,255,.75)}
+
+  /* ---------- HOLD BUTTONS ---------- */
+  .hold{position:relative;overflow:hidden}
+  .hold .fill{
+    position:absolute;left:0;top:0;bottom:0;width:0;
+    background:rgba(255,255,255,.32);pointer-events:none;z-index:0;
+    transition:width .05s linear;
+  }
+  .hold > span{position:relative;z-index:1}
+
+  /* ---------- DIM / LOCK OVERLAY ---------- */
+  #dim{
+    position:fixed;inset:0;z-index:60;background:#000;
+    display:none;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;user-select:none;-webkit-user-select:none;
+  }
+  #dim.show{display:flex}
+  #dim .dphase{
+    font-size:13px;letter-spacing:.32em;text-transform:uppercase;font-weight:700;
+    color:#4c525b;margin-bottom:12px;
+  }
+  #dim .dclock{
+    font-size:clamp(72px,27vw,140px);font-weight:800;line-height:.95;
+    letter-spacing:-.03em;color:#454b53;
+  }
+  #dim .dtap{
+    position:absolute;bottom:38px;left:0;right:0;
+    font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#2b2f36;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- SETUP -->
+  <section id="setup">
+    <div class="eyebrow">Interval timer</div>
+    <h1>Return to Run</h1>
+
+    <div class="stepper">
+      <div class="label"><b>Warm-up</b><span>easy start, minutes</span></div>
+      <div class="ctrls">
+        <button class="rnd" data-k="warmup" data-d="-1">–</button>
+        <div class="val" id="v-warmup"></div>
+        <button class="rnd" data-k="warmup" data-d="1">+</button>
+      </div>
+    </div>
+
+    <div class="stepper">
+      <div class="label"><b>Run</b><span>two beeps to start</span></div>
+      <div class="ctrls">
+        <button class="rnd" data-k="run" data-d="-1">–</button>
+        <div class="val" id="v-run"></div>
+        <button class="rnd" data-k="run" data-d="1">+</button>
+      </div>
+    </div>
+
+    <div class="stepper">
+      <div class="label"><b>Walk</b><span>one beep to start</span></div>
+      <div class="ctrls">
+        <button class="rnd" data-k="walk" data-d="-1">–</button>
+        <div class="val" id="v-walk"></div>
+        <button class="rnd" data-k="walk" data-d="1">+</button>
+      </div>
+    </div>
+
+    <div class="stepper">
+      <div class="label"><b>Total session</b><span>includes warm-up, minutes</span></div>
+      <div class="ctrls">
+        <button class="rnd" data-k="total" data-d="-1">–</button>
+        <div class="val" id="v-total"></div>
+        <button class="rnd" data-k="total" data-d="1">+</button>
+      </div>
+    </div>
+
+    <div class="summary" id="summary"></div>
+
+    <button class="cta" id="start">Start workout</button>
+  </section>
+
+  <!-- ACTIVE -->
+  <section id="active">
+    <div class="phase" id="phaseLabel">Warm-up</div>
+    <div class="clock" id="clock">0:00</div>
+    <div class="meta">
+      <div><span class="k">Cycle</span><span class="v" id="cycle">–</span></div>
+      <div><span class="k">Session left</span><span class="v" id="sessionLeft">0:00</span></div>
+    </div>
+    <div class="bar"><i id="barFill"></i></div>
+    <div class="row">
+      <button class="cta ghost hold" id="pause" style="flex:1;margin-top:0"><span id="pauseLbl">Hold to pause</span><i class="fill"></i></button>
+      <button class="cta stop hold" id="stop" style="flex:1"><span id="stopLbl">Hold to end</span><i class="fill"></i></button>
+    </div>
+    <div class="hint">Screen dims to black to save battery. Tap to check it. Buttons need a hold, so a stray touch can't stop your run.</div>
+  </section>
+
+</div>
+
+<!-- DIM / LOCK OVERLAY -->
+<div id="dim">
+  <div class="dphase" id="dPhase">Warm-up</div>
+  <div class="dclock" id="dClock">0:00</div>
+  <div class="dtap">Tap to wake · dimmed to save battery</div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---- make installable as a standalone app (no browser toolbar / tabs) ----
+  // Only takes effect when served over HTTPS. Generates its own icon + manifest
+  // so the whole app stays a single self-contained file.
+  (function installable(){
+    if(location.protocol!=="https:") return;  // Chrome won't install file:// pages
+    function rr(x,l,t,w,h,r){ x.beginPath();
+      x.moveTo(l+r,t); x.arcTo(l+w,t,l+w,t+h,r); x.arcTo(l+w,t+h,l,t+h,r);
+      x.arcTo(l,t+h,l,t,r); x.arcTo(l,t,l+w,t,r); x.closePath(); }
+    function icon(s){
+      var c=document.createElement("canvas"); c.width=c.height=s;
+      var x=c.getContext("2d");
+      x.fillStyle="#0f1115"; x.fillRect(0,0,s,s);
+      var p=s*0.15; x.fillStyle="#28b463"; rr(x,p,p,s-2*p,s-2*p,s*0.22); x.fill();
+      x.strokeStyle="#04180d"; x.lineWidth=s*0.075; x.lineCap="round"; x.lineJoin="round";
+      var cx=s*0.5, cy=s*0.5, w=s*0.13, h=s*0.17;
+      [-w*0.9, w*0.9].forEach(function(o){
+        x.beginPath(); x.moveTo(cx+o-w*0.4,cy-h); x.lineTo(cx+o+w*0.4,cy);
+        x.lineTo(cx+o-w*0.4,cy+h); x.stroke();
+      });
+      return c.toDataURL("image/png");
+    }
+    var base=location.href.substring(0,location.href.lastIndexOf("/")+1);
+    var m={
+      name:"Return to Run", short_name:"R2R",
+      start_url:base, scope:base,
+      display:"standalone", orientation:"portrait",
+      background_color:"#0f1115", theme_color:"#0f1115",
+      icons:[
+        {src:icon(192),sizes:"192x192",type:"image/png",purpose:"any"},
+        {src:icon(512),sizes:"512x512",type:"image/png",purpose:"any maskable"}
+      ]
+    };
+    var url=URL.createObjectURL(new Blob([JSON.stringify(m)],{type:"application/manifest+json"}));
+    var link=document.createElement("link"); link.rel="manifest"; link.href=url;
+    document.head.appendChild(link);
+  })();
+
+  // ---- settings model (seconds) ----
+  var cfg = {
+    warmup:{v:5,  min:0, max:20, step:1, unit:"min"},
+    run:   {v:60, min:15,max:600,step:15,unit:"sec"},
+    walk:  {v:90, min:15,max:600,step:15,unit:"sec"},
+    total: {v:20, min:5, max:90, step:1, unit:"min"}
+  };
+
+  function fmtVal(k){
+    var c=cfg[k];
+    if(c.unit==="min") return c.v+" min";
+    // seconds -> m:ss or s
+    if(c.v<60) return c.v+"s";
+    var m=Math.floor(c.v/60), s=c.v%60;
+    return s? m+":"+String(s).padStart(2,"0") : m+" min";
+  }
+  function clock(sec){
+    sec=Math.max(0,Math.round(sec));
+    var m=Math.floor(sec/60), s=sec%60;
+    return m+":"+String(s).padStart(2,"0");
+  }
+
+  function renderSetup(){
+    ["warmup","run","walk","total"].forEach(function(k){
+      document.getElementById("v-"+k).textContent=fmtVal(k);
+    });
+    var runS=cfg.run.v, walkS=cfg.walk.v;
+    var cycle=runS+walkS;
+    var intervalSecs=cfg.total.v*60 - cfg.warmup.v*60;
+    var cycles = cycle>0 ? Math.max(0, intervalSecs/cycle) : 0;
+    document.getElementById("summary").innerHTML =
+      "One cycle = <b>"+clock(cycle)+"</b> ("+clock(runS)+" run / "+clock(walkS)+" walk). "+
+      "After a <b>"+cfg.warmup.v+" min</b> warm-up you'll get about <b>"+
+      (Math.round(cycles*10)/10)+"</b> cycles inside a <b>"+cfg.total.v+" min</b> session.";
+  }
+
+  document.getElementById("setup").addEventListener("click",function(e){
+    var b=e.target.closest(".rnd"); if(!b) return;
+    var k=b.dataset.k, dir=parseInt(b.dataset.d,10), c=cfg[k];
+    c.v=Math.min(c.max,Math.max(c.min,c.v+dir*c.step));
+    renderSetup();
+  });
+
+  // ---- audio (Web Audio, mixes with background audio) ----
+  var actx=null;
+  function ensureAudio(){
+    if(!actx){
+      var AC=window.AudioContext||window.webkitAudioContext;
+      actx=new AC();
+    }
+    if(actx.state==="suspended") actx.resume();
+  }
+  function tone(freq,startOffset,dur,vol){
+    var o=actx.createOscillator(), g=actx.createGain();
+    o.type="sine"; o.frequency.value=freq;
+    o.connect(g); g.connect(actx.destination);
+    var t=actx.currentTime+startOffset;
+    g.gain.setValueAtTime(0,t);
+    g.gain.linearRampToValueAtTime(vol,t+0.012);
+    g.gain.linearRampToValueAtTime(0.0001,t+dur);
+    o.start(t); o.stop(t+dur+0.03);
+  }
+  function cue(type){
+    if(!actx) return;
+    if(type==="run"){        // two beeps, high
+      tone(880,0,.16,.5); tone(880,.22,.16,.5);
+    }else if(type==="walk"){ // one beep, lower
+      tone(587,0,.20,.5);
+    }else if(type==="warmup"){ // three soft mid beeps
+      tone(660,0,.12,.4); tone(660,.16,.12,.4); tone(660,.32,.12,.4);
+    }else if(type==="done"){ // descending finish
+      tone(784,0,.18,.5); tone(659,.20,.18,.5); tone(523,.40,.30,.5);
+    }
+  }
+
+  // ---- schedule ----
+  var schedule=[], totalDur=0;
+  function build(){
+    schedule=[]; 
+    var total=cfg.total.v*60;
+    var warm=cfg.warmup.v*60;
+    var t=0;
+    if(warm>0){ schedule.push({type:"warmup",start:0,end:Math.min(warm,total)}); t=Math.min(warm,total); }
+    var isRun=true;
+    while(t<total){
+      var len=isRun?cfg.run.v:cfg.walk.v;
+      var end=Math.min(t+len,total);
+      schedule.push({type:isRun?"run":"walk",start:t,end:end});
+      t=end; isRun=!isRun;
+    }
+    totalDur=total;
+  }
+
+  // ---- run loop ----
+  var loop=null, startTs=0, pausedAt=0, pausedTotal=0, paused=false, lastIdx=-1, wakeLock=null;
+  var body=document.body;
+  var setup=document.getElementById("setup"), active=document.getElementById("active");
+
+  function startLoop(){ if(!loop) loop=setInterval(tick,200); tick(); }
+  function stopLoop(){ if(loop){ clearInterval(loop); loop=null; } }
+
+  // ---- dim / lock ----
+  var dimEl=document.getElementById("dim");
+  var dimTimer=null, workoutOn=false;
+  var DIM_AFTER=6000; // ms of no touch before the screen blacks out
+
+  function wake(){                       // show bright screen, restart the auto-dim countdown
+    dimEl.classList.remove("show");
+    if(dimTimer){ clearTimeout(dimTimer); dimTimer=null; }
+    if(workoutOn && !paused) dimTimer=setTimeout(goDim,DIM_AFTER);
+  }
+  function goDim(){
+    if(!workoutOn || paused) return;
+    dimEl.classList.add("show");
+  }
+  dimEl.addEventListener("pointerdown",function(e){ e.preventDefault(); wake(); });
+
+  // hold-to-activate: fires onDone only after the button is held for `ms`
+  function longPress(btn,ms,onDone){
+    var fill=btn.querySelector(".fill");
+    var t0=0, raf2=null, holding=false;
+    function frame(){
+      if(!holding) return;
+      var p=Math.min(1,(performance.now()-t0)/ms);
+      fill.style.width=(p*100)+"%";
+      if(p>=1){ holding=false; fill.style.width="0"; onDone(); return; }
+      raf2=requestAnimationFrame(frame);
+    }
+    function down(e){ e.preventDefault(); wake(); holding=true; t0=performance.now(); frame(); }
+    function up(){ holding=false; if(raf2)cancelAnimationFrame(raf2); fill.style.width="0"; }
+    btn.addEventListener("pointerdown",down);
+    btn.addEventListener("pointerup",up);
+    btn.addEventListener("pointerleave",up);
+    btn.addEventListener("pointercancel",up);
+  }
+
+  function segIndexAt(el){
+    for(var i=0;i<schedule.length;i++){ if(el<schedule[i].end-1e-6) return i; }
+    return -1;
+  }
+  function cyclesTotal(){
+    return schedule.filter(function(s){return s.type==="run";}).length;
+  }
+
+  async function reqWake(){
+    try{ if("wakeLock" in navigator){ wakeLock=await navigator.wakeLock.request("screen"); } }catch(e){}
+  }
+  function relWake(){ try{ if(wakeLock){wakeLock.release();wakeLock=null;} }catch(e){} }
+  document.addEventListener("visibilitychange",function(){
+    if(document.visibilityState==="visible" && active.style.display!=="none" && !paused){
+      reqWake();
+      ensureAudio();      // resume the audio context if Android suspended it
+      tick();             // re-sync instantly from wall clock
+    }
+  });
+
+  // ---- exit guards ----
+  // Back gesture / back button: push a dummy history entry so "back" is caught
+  // here and just wakes the screen instead of leaving the workout.
+  function trapBack(){
+    try{ history.pushState({rtr:1},""); }catch(e){}
+  }
+  window.addEventListener("popstate",function(){
+    if(workoutOn){
+      trapBack();   // re-arm
+      wake();
+    }
+  });
+  // Closing the tab / navigating away mid-workout asks for confirmation.
+  window.addEventListener("beforeunload",function(e){
+    if(workoutOn){ e.preventDefault(); e.returnValue=""; return ""; }
+  });
+
+  function startWorkout(){
+    build();
+    ensureAudio();
+    reqWake();
+    lastIdx=-1; pausedTotal=0; paused=false;
+    startTs=Date.now();                       // wall clock — immune to tab throttling
+    setup.style.display="none"; active.style.display="flex";
+    body.classList.add("running");
+    document.getElementById("cycle").textContent="1 / "+cyclesTotal();
+    workoutOn=true; wake();   // start bright, then auto-dim after DIM_AFTER
+    trapBack();
+    startLoop();
+  }
+
+  function tick(){
+    var el=(Date.now()-startTs-pausedTotal)/1000;
+    if(el>=totalDur){ finish(); return; }
+
+    var idx=segIndexAt(el);
+    var seg=schedule[idx];
+
+    if(idx!==lastIdx){
+      var wasFirst=(lastIdx===-1);
+      lastIdx=idx;
+      // Only beep if we're near the start of the segment. If the page was frozen
+      // in the background and several segments slipped by, catch up silently
+      // rather than firing a burst of stale cues.
+      if(wasFirst || (el-seg.start)<3) cue(seg.type);
+      body.classList.remove("phase-warmup","phase-run","phase-walk","phase-done");
+      body.classList.add("phase-"+seg.type);
+      var labels={warmup:"Warm-up",run:"Run",walk:"Walk"};
+      document.getElementById("phaseLabel").textContent=labels[seg.type];
+      document.getElementById("dPhase").textContent=labels[seg.type];
+      var runsSoFar=schedule.slice(0,idx+1).filter(function(s){return s.type==="run";}).length;
+      document.getElementById("cycle").textContent=
+        (seg.type==="warmup"?"Warm-up":(Math.max(1,runsSoFar)+" / "+cyclesTotal()));
+    }
+
+    var segLeft=seg.end-el;
+    var sessLeft=totalDur-el;
+    document.getElementById("clock").textContent=clock(segLeft);
+    document.getElementById("dClock").textContent=clock(segLeft);
+    document.getElementById("sessionLeft").textContent=clock(sessLeft);
+    document.getElementById("barFill").style.width=(el/totalDur*100)+"%";
+  }
+
+  function finish(){
+    stopLoop();
+    workoutOn=false; if(dimTimer){clearTimeout(dimTimer);dimTimer=null;}
+    dimEl.classList.remove("show");
+    cue("done");
+
+    body.classList.remove("phase-warmup","phase-run","phase-walk");
+    body.classList.add("phase-done");
+    document.getElementById("phaseLabel").textContent="Done — nice work";
+    document.getElementById("clock").textContent="0:00";
+    document.getElementById("sessionLeft").textContent="0:00";
+    document.getElementById("barFill").style.width="100%";
+    document.getElementById("pause").style.display="none";
+    document.getElementById("stopLbl").textContent="Back to setup";
+    relWake();
+  }
+
+  document.getElementById("start").addEventListener("click",startWorkout);
+
+  function togglePause(){
+    if(!paused){
+      paused=true; pausedAt=Date.now(); stopLoop();
+      if(dimTimer){clearTimeout(dimTimer);dimTimer=null;} dimEl.classList.remove("show");
+      document.getElementById("pauseLbl").textContent="Hold to resume"; relWake();
+    }else{
+      paused=false; pausedTotal+=Date.now()-pausedAt;
+      document.getElementById("pauseLbl").textContent="Hold to pause";
+      reqWake(); ensureAudio(); wake(); startLoop();
+    }
+  }
+  function endWorkout(){
+    stopLoop(); relWake();
+    workoutOn=false; paused=false;
+    if(dimTimer){clearTimeout(dimTimer);dimTimer=null;} dimEl.classList.remove("show");
+    body.classList.remove("running","phase-warmup","phase-run","phase-walk","phase-done");
+    active.style.display="none"; setup.style.display="flex";
+    document.getElementById("pause").style.display="";
+    document.getElementById("pauseLbl").textContent="Hold to pause";
+    document.getElementById("stopLbl").textContent="Hold to end";
+  }
+
+  longPress(document.getElementById("pause"),700,togglePause);
+  longPress(document.getElementById("stop"),1200,endWorkout);
+
+  renderSetup();
+})();
+</script>
+</body>
+</html>
